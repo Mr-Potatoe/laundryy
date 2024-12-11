@@ -40,6 +40,12 @@
                     </a>
                 </li>
                 <li>
+                    <a href="business-settings.php" class="waves-effect">
+                        <i class="material-icons left">settings</i>
+                        Business Settings
+                    </a>
+                </li>
+                <li>
                     <a class="dropdown-trigger waves-effect" href="#!" data-target="admin-dropdown">
                         <i class="material-icons left">account_circle</i>
                         Admin
@@ -109,6 +115,12 @@
         <a href="users.php" class="waves-effect">
             <i class="material-icons">people</i>
             Users
+        </a>
+    </li>
+    <li>
+        <a href="business-settings.php" class="waves-effect">
+            <i class="material-icons left">settings</i>
+            Business Settings
         </a>
     </li>
     <li><div class="divider"></div></li>

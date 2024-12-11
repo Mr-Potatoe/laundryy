@@ -7,6 +7,50 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'customer') {
     exit();
 }
 
+// Handle AJAX requests
+if (isset($_GET['get_order_details'])) {
+    $order_id = $_GET['order_id'];
+    
+    // Get order details with items
+    $stmt = $pdo->prepare("
+        SELECT o.*, 
+               oi.quantity, 
+               oi.item_price,
+               s.service_name,
+               s.price_per_kg
+        FROM orders o
+        LEFT JOIN order_items oi ON o.order_id = oi.order_id
+        LEFT JOIN services s ON oi.service_id = s.service_id
+        WHERE o.order_id = ? AND o.user_id = ?
+    ");
+    $stmt->execute([$order_id, $_SESSION['user_id']]);
+    $items = $stmt->fetchAll();
+    
+    if ($items) {
+        $order_details = [
+            'order' => [
+                'order_id' => $items[0]['order_id'],
+                'status' => $items[0]['status'],
+                'total_weight' => $items[0]['total_weight'],
+                'total_price' => $items[0]['total_price'],
+                'pickup_datetime' => $items[0]['pickup_datetime'],
+                'delivery_datetime' => $items[0]['delivery_datetime'],
+                'special_instructions' => $items[0]['special_instructions']
+            ],
+            'items' => array_map(function($item) {
+                return [
+                    'service_name' => $item['service_name'],
+                    'quantity' => $item['quantity'],
+                    'price_per_kg' => $item['price_per_kg'],
+                    'total' => $item['item_price']
+                ];
+            }, $items)
+        ];
+        echo json_encode($order_details);
+        exit;
+    }
+}
+
 // Get user's orders with service details
 $stmt = $pdo->prepare("
     SELECT o.*, GROUP_CONCAT(s.service_name) as services
@@ -158,7 +202,7 @@ $stats = [
                             </div>
                             <div class="col s12 m2">
                                 <strong>Total:</strong>
-                                <p>$<?php echo number_format($order['total_price'], 2); ?></p>
+                                <p><?php echo number_format($order['total_price'], 2); ?></p>
                             </div>
                             <div class="col s12 m2">
                                 <strong>Status:</strong><br>
@@ -205,7 +249,7 @@ $stats = [
                         <p><strong>Order ID:</strong> #<span id="modal-order-id"></span></p>
                         <p><strong>Status:</strong> <span id="modal-status"></span></p>
                         <p><strong>Total Weight:</strong> <span id="modal-total-weight"></span> kg</p>
-                        <p><strong>Total Price:</strong> $<span id="modal-total-price"></span></p>
+                        <p><strong>Total Price:</strong> <span id="modal-total-price"></span></p>
                     </div>
                 </div>
                 <div class="col s12 m6">
@@ -252,27 +296,6 @@ $stats = [
         $(document).ready(function() {
             $('.modal').modal();
 
-            // Search functionality
-            $('#searchInput').on('keyup', function() {
-                const value = $(this).val().toLowerCase();
-                $('.order-card').filter(function() {
-                    $(this).toggle($(this).text().toLowerCase().indexOf(value) > -1)
-                });
-            });
-
-            // Filter functionality
-            $('.filter-chip').click(function() {
-                $('.filter-chip').removeClass('active');
-                $(this).addClass('active');
-                
-                const filter = $(this).data('filter');
-                $('.order-card').show();
-                
-                if (filter !== 'all') {
-                    $('.order-card').not(`[data-status="${filter}"]`).hide();
-                }
-            });
-
             // View Details
             $('.view-details').click(function() {
                 const orderId = $(this).data('order-id');
@@ -293,19 +316,77 @@ $stats = [
                 if (confirm('Are you sure you want to cancel this order?')) {
                     const orderId = $(this).data('order-id');
                     
-                    $.post('orders.php', {
-                        cancel_order: true,
-                        order_id: orderId
-                    })
-                    .done(function(response) {
-                        location.reload();
+                    $.ajax({
+                        url: 'cancel_order.php',
+                        type: 'POST',
+                        data: { order_id: orderId },
+                        dataType: 'json',
+                        success: function(response) {
+                            if (response.success) {
+                                M.toast({html: response.message, classes: 'green'});
+                                location.reload();
+                            } else {
+                                M.toast({html: response.message, classes: 'red'});
+                            }
+                        },
+                        error: function() {
+                            M.toast({html: 'An error occurred while cancelling the order', classes: 'red'});
+                        }
                     });
+                }
+            });
+
+            // Search functionality
+            $('#searchInput').on('keyup', function() {
+                const value = $(this).val().toLowerCase();
+                $('.order-card').filter(function() {
+                    $(this).toggle($(this).text().toLowerCase().indexOf(value) > -1)
+                });
+            });
+
+            // Filter functionality
+            $('.filter-chip').click(function() {
+                $('.filter-chip').removeClass('active');
+                $(this).addClass('active');
+                
+                const filter = $(this).data('filter');
+                $('.order-card').show();
+                
+                if (filter !== 'all') {
+                    $('.order-card').not(`[data-status="${filter}"]`).hide();
                 }
             });
         });
 
         function updateModalContent(data) {
-            // ... (existing modal update code) ...
+            const order = data.order;
+            
+            // Update order information
+            $('#modal-order-id').text(order.order_id);
+            $('#modal-status').html(`<span class="status-badge status-${order.status}">${order.status}</span>`);
+            $('#modal-total-weight').text(order.total_weight);
+            $('#modal-total-price').text('$' + parseFloat(order.total_price).toFixed(2));
+            
+            // Update dates
+            $('#modal-pickup-date').text(new Date(order.pickup_datetime).toLocaleString());
+            $('#modal-delivery-date').text(new Date(order.delivery_datetime).toLocaleString());
+            
+            // Update special instructions
+            $('#modal-instructions').text(order.special_instructions || 'No special instructions');
+            
+            // Update services table
+            let itemsHtml = '';
+            data.items.forEach(item => {
+                itemsHtml += `
+                    <tr>
+                        <td>${item.service_name}</td>
+                        <td>${item.quantity}</td>
+                        <td>$${parseFloat(item.price_per_kg).toFixed(2)}</td>
+                        <td>$${parseFloat(item.total).toFixed(2)}</td>
+                    </tr>
+                `;
+            });
+            $('#modal-items').html(itemsHtml);
         }
     </script>
     <?php include 'includes/footer.php'; ?>

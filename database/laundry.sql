@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Dec 06, 2024 at 10:19 AM
+-- Generation Time: Dec 11, 2024 at 12:37 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -24,6 +24,29 @@ SET time_zone = "+00:00";
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `business_settings`
+--
+
+CREATE TABLE `business_settings` (
+  `setting_id` int(11) NOT NULL,
+  `business_days` varchar(255) NOT NULL DEFAULT 'Monday,Tuesday,Wednesday,Thursday,Friday,Saturday',
+  `opening_time` time NOT NULL DEFAULT '09:00:00',
+  `closing_time` time NOT NULL DEFAULT '17:00:00',
+  `slot_duration` int(11) NOT NULL DEFAULT 60,
+  `advance_booking_days` int(11) NOT NULL DEFAULT 30,
+  `delivery_fee` decimal(10,2) NOT NULL DEFAULT 5.00
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `business_settings`
+--
+
+INSERT INTO `business_settings` (`setting_id`, `business_days`, `opening_time`, `closing_time`, `slot_duration`, `advance_booking_days`, `delivery_fee`) VALUES
+(1, 'Saturday', '09:00:00', '17:00:00', 60, 30, 5.00);
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `orders`
 --
 
@@ -33,21 +56,16 @@ CREATE TABLE `orders` (
   `total_weight` decimal(10,2) DEFAULT NULL,
   `total_price` decimal(10,2) DEFAULT NULL,
   `order_date` timestamp NOT NULL DEFAULT current_timestamp(),
-  `pickup_date` date DEFAULT NULL,
-  `delivery_date` date DEFAULT NULL,
   `status` enum('pending','processing','ready','delivered','cancelled') DEFAULT 'pending',
-  `special_instructions` text DEFAULT NULL
+  `special_instructions` text DEFAULT NULL,
+  `service_type` enum('self','delivery') NOT NULL,
+  `pickup_datetime` datetime DEFAULT NULL,
+  `delivery_datetime` datetime DEFAULT NULL,
+  `cancelled_at` timestamp NULL DEFAULT NULL,
+  `cancelled_by` int(11) DEFAULT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
---
--- Dumping data for table `orders`
---
-
-INSERT INTO `orders` (`order_id`, `user_id`, `total_weight`, `total_price`, `order_date`, `pickup_date`, `delivery_date`, `status`, `special_instructions`) VALUES
-(1, 2, 32.00, 1389824.00, '2024-12-06 08:01:07', '2024-12-06', '2024-12-07', 'processing', 'bebqwbe'),
-(2, 2, 34.00, 1476688.00, '2024-12-06 08:22:52', '2024-12-07', '2024-12-09', 'pending', 'asd');
-
--- --------------------------------------------------------
 
 --
 -- Table structure for table `order_items`
@@ -62,14 +80,6 @@ CREATE TABLE `order_items` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Dumping data for table `order_items`
---
-
-INSERT INTO `order_items` (`order_item_id`, `order_id`, `service_id`, `quantity`, `item_price`) VALUES
-(1, 1, 1, 32.00, 1389824.00),
-(2, 2, 1, 34.00, 1476688.00);
-
--- --------------------------------------------------------
 
 --
 -- Table structure for table `services`
@@ -85,14 +95,6 @@ CREATE TABLE `services` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Dumping data for table `services`
---
-
-INSERT INTO `services` (`service_id`, `service_name`, `description`, `price_per_kg`, `service_type`, `status`) VALUES
-(1, 'hshdsah', 'hsahdhas', 43432.00, 'iron', 'active'),
-(2, 'sad', 'asd', 43.00, 'dry_clean', 'active');
-
--- --------------------------------------------------------
 
 --
 -- Table structure for table `users`
@@ -117,12 +119,18 @@ CREATE TABLE `users` (
 --
 
 INSERT INTO `users` (`user_id`, `username`, `email`, `password`, `full_name`, `phone`, `address`, `role`, `created_at`, `last_login`, `status`) VALUES
-(1, 'admin', 'admin@gmail.com', '$2y$10$ureu7VKaiYPr.5rw6AnwqOsStxunsPZiqLap7qtOCpBXgcQ2K9gPm', 'System Administrator', '1234567890', 'Main Office', 'admin', '2024-12-06 06:18:38', '2024-12-06 08:27:17', 'active'),
-(2, 'ara', 'ara@gmail.com', '$2y$10$eZ59vlfZTyFO0SBj6yVDweqK5QdcFjUVoJBzgtiGkiGj7QJ9T26za', 'ara mae ', '0907171771', 'ksksks', 'customer', '2024-12-06 07:58:11', '2024-12-06 08:45:50', 'active');
+(1, 'admin', 'admin@gmail.com', '$2y$10$2CWS2HtPN8Q.6CEbHfw0eepKt2Ri547lukyTPBKjqxa38aqCuQ6W6', 'System Administrator', '1234567890', 'Main Office', 'admin', '2024-12-06 06:18:38', '2024-12-11 09:09:27', 'active'),
+(2, 'ara', 'ara@gmail.com', '$2y$10$eZ59vlfZTyFO0SBj6yVDweqK5QdcFjUVoJBzgtiGkiGj7QJ9T26za', 'ara mae ', '0907171771', 'ksksks', 'customer', '2024-12-06 07:58:11', '2024-12-11 11:31:25', 'active');
 
 --
 -- Indexes for dumped tables
 --
+
+--
+-- Indexes for table `business_settings`
+--
+ALTER TABLE `business_settings`
+  ADD PRIMARY KEY (`setting_id`);
 
 --
 -- Indexes for table `orders`
@@ -158,16 +166,22 @@ ALTER TABLE `users`
 --
 
 --
+-- AUTO_INCREMENT for table `business_settings`
+--
+ALTER TABLE `business_settings`
+  MODIFY `setting_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+
+--
 -- AUTO_INCREMENT for table `orders`
 --
 ALTER TABLE `orders`
-  MODIFY `order_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `order_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --
 -- AUTO_INCREMENT for table `order_items`
 --
 ALTER TABLE `order_items`
-  MODIFY `order_item_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `order_item_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --
 -- AUTO_INCREMENT for table `services`

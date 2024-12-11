@@ -8,13 +8,14 @@ checkAdminAccess();
 $stmt = $pdo->query("SELECT 
     COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_orders,
     COUNT(CASE WHEN status = 'processing' THEN 1 END) as processing_orders,
-    COUNT(CASE WHEN status = 'delivered' THEN 1 END) as completed_orders
+    COUNT(CASE WHEN status = 'delivered' THEN 1 END) as completed_orders,
+    COUNT(CASE WHEN status = 'cancelled' THEN 1 END) as cancelled_orders
     FROM orders");
 $stats = $stmt->fetch();
 
 // Get recent orders
 $recentOrders = $pdo->query("SELECT o.*, u.username 
-    FROM orders o 
+    FROM orders o  
     JOIN users u ON o.user_id = u.user_id 
     ORDER BY order_date DESC LIMIT 5")->fetchAll();
 
@@ -49,6 +50,7 @@ $revenue = $stmt->fetch();
         .status-pending { background-color: #ff9800; }
         .status-processing { background-color: #2196f3; }
         .status-delivered { background-color: #4caf50; }
+        .status-cancelled { background-color: #f44336; }
     </style>
 </head>
 <body class="grey lighten-4">
@@ -97,7 +99,7 @@ $revenue = $stmt->fetch();
                     <div class="card-content white-text center-align">
                         <i class="material-icons card-icon">attach_money</i>
                         <span class="card-title">Revenue</span>
-                        <h3>$<?php echo number_format($revenue['total_revenue'], 2); ?></h3>
+                        <h3><?php echo number_format($revenue['total_revenue'], 2); ?></h3>
                     </div>
                 </div>
             </div>
@@ -129,7 +131,7 @@ $revenue = $stmt->fetch();
                                 <tr>
                                     <td>#<?php echo str_pad($order['order_id'], 5, '0', STR_PAD_LEFT); ?></td>
                                     <td><i class="material-icons tiny">person</i> <?php echo $order['username']; ?></td>
-                                    <td><b>$<?php echo number_format($order['total_price'], 2); ?></b></td>
+                                    <td><b><?php echo number_format($order['total_price'], 2); ?></b></td>
                                     <td>
                                         <span class="status-badge status-<?php echo $order['status']; ?>">
                                             <?php echo ucfirst($order['status']); ?>

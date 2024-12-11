@@ -1,11 +1,15 @@
 <?php
 session_start();
 require_once '../includes/db_connect.php';
+require_once '../includes/check_user_status.php';
 
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'customer') {
     header("Location: ../login.php");
     exit();
 }
+
+// Check user status
+$is_blocked = !checkUserStatus($pdo, $_SESSION['user_id']);
 
 // Get user's orders with service details
 $stmt = $pdo->prepare("
@@ -93,10 +97,35 @@ $services = $pdo->query("SELECT * FROM services WHERE status = 'active' LIMIT 4"
             border-radius: 4px;
             margin-bottom: 20px;
         }
+        .action-buttons {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-start;
+            align-items: center;
+        }
+        .action-buttons .btn-floating {
+            transition: transform 0.2s;
+        }
+        .action-buttons .btn-floating:hover {
+            transform: scale(1.1);
+        }
     </style>
 </head>
 <body>
     <?php include 'includes/customer_nav.php'; ?>
+    
+    <?php if ($is_blocked): ?>
+    <div class="container">
+        <div class="card-panel red lighten-4 red-text text-darken-4" style="margin-top: 20px;">
+            <i class="material-icons left">warning</i>
+            <strong>Account Blocked:</strong> Your account has been blocked. Please contact support for assistance.
+            <a href="mailto:support@laundry.com" class="btn-flat red-text text-darken-4 waves-effect">
+                <i class="material-icons left">email</i>
+                Contact Support
+            </a>
+        </div>
+    </div>
+    <?php endif; ?>
     
     <div class="container">
         <!-- Welcome Section -->
@@ -141,7 +170,7 @@ $services = $pdo->query("SELECT * FROM services WHERE status = 'active' LIMIT 4"
             <div class="col s12 m3">
                 <div class="card stats-card">
                     <i class="material-icons purple-text">account_balance_wallet</i>
-                    <h5>$<?php echo number_format($order_stats['total_spent'], 2); ?></h5>
+                    <h5><?php echo number_format($order_stats['total_spent'], 2); ?></h5>
                     <p>Total Spent</p>
                 </div>
             </div>
@@ -158,7 +187,7 @@ $services = $pdo->query("SELECT * FROM services WHERE status = 'active' LIMIT 4"
                     <div class="card-content">
                         <span class="card-title truncate"><?php echo $service['service_name']; ?></span>
                         <p class="truncate"><?php echo $service['description']; ?></p>
-                        <p class="teal-text">$<?php echo number_format($service['price_per_kg'], 2); ?>/kg</p>
+                        <p class="teal-text"><?php echo number_format($service['price_per_kg'], 2); ?>/kg</p>
                     </div>
                     <div class="card-action">
                         <a href="book-service.php" class="teal-text">Book Now</a>
@@ -198,7 +227,7 @@ $services = $pdo->query("SELECT * FROM services WHERE status = 'active' LIMIT 4"
                                     <td class="truncate" style="max-width: 200px;">
                                         <?php echo $order['services']; ?>
                                     </td>
-                                    <td>$<?php echo number_format($order['total_price'], 2); ?></td>
+                                    <td><?php echo number_format($order['total_price'], 2); ?></td>
                                     <td>
                                         <span class="order-status status-<?php echo $order['status']; ?>">
                                             <?php echo ucfirst($order['status']); ?>
@@ -206,10 +235,34 @@ $services = $pdo->query("SELECT * FROM services WHERE status = 'active' LIMIT 4"
                                     </td>
                                     <td><?php echo date('M d, Y', strtotime($order['order_date'])); ?></td>
                                     <td>
-                                        <a href="view_order.php?id=<?php echo $order['order_id']; ?>" 
-                                           class="btn-small waves-effect waves-light">
-                                            <i class="material-icons">visibility</i>
-                                        </a>
+                                        <div class="action-buttons">
+                                            <a href="view_order.php?id=<?php echo $order['order_id']; ?>" 
+                                               class="btn-floating btn-small waves-effect waves-light blue tooltipped"
+                                               data-position="top" 
+                                               data-tooltip="View Details">
+                                                <i class="material-icons">visibility</i>
+                                            </a>
+                                            
+                                            <?php if($order['status'] == 'pending'): ?>
+                                                <a href="#" 
+                                                   class="btn-floating btn-small waves-effect waves-light red tooltipped cancel-order"
+                                                   data-position="top" 
+                                                   data-tooltip="Cancel Order"
+                                                   data-order-id="<?php echo $order['order_id']; ?>">
+                                                    <i class="material-icons">cancel</i>
+                                                </a>
+                                            <?php endif; ?>
+                                            
+                                            <?php if($order['status'] == 'delivered'): ?>
+                                                <a href="invoice.php?id=<?php echo $order['order_id']; ?>" 
+                                                   class="btn-floating btn-small waves-effect waves-light green tooltipped"
+                                                   data-position="top" 
+                                                   data-tooltip="Download Invoice"
+                                                   target="_blank">
+                                                    <i class="material-icons">receipt</i>
+                                                </a>
+                                            <?php endif; ?>
+                                        </div>
                                     </td>
                                 </tr>
                                 <?php endforeach; ?>
@@ -230,8 +283,59 @@ $services = $pdo->query("SELECT * FROM services WHERE status = 'active' LIMIT 4"
     <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
     <script>
         $(document).ready(function() {
+            // Initialize tooltips
             $('.tooltipped').tooltip();
-            $('.sidenav').sidenav();
+            
+            // Handle cancel order button click
+            $('.cancel-order').click(function(e) {
+                e.preventDefault();
+                const orderId = $(this).data('order-id');
+                
+                // Show confirmation dialog
+                if (confirm('Are you sure you want to cancel this order?')) {
+                    $.ajax({
+                        url: 'cancel_order.php',
+                        type: 'POST',
+                        data: { order_id: orderId },
+                        dataType: 'json',
+                        success: function(response) {
+                            if (response.success) {
+                                // Show success message
+                                M.toast({html: response.message, classes: 'green'});
+                                
+                                // Update the status in the table
+                                const row = $(`a[data-order-id="${orderId}"]`).closest('tr');
+                                row.find('.order-status')
+                                   .removeClass()
+                                   .addClass('order-status status-cancelled')
+                                   .text('Cancelled');
+                                   
+                                // Remove the cancel button
+                                $(`a[data-order-id="${orderId}"]`).remove();
+                            } else {
+                                // Show error message
+                                M.toast({html: response.message, classes: 'red'});
+                            }
+                        },
+                        error: function() {
+                            M.toast({html: 'An error occurred while cancelling the order', classes: 'red'});
+                        }
+                    });
+                }
+            });
+            
+            // Handle invoice download (optional enhancement)
+            $('.tooltipped[href*="invoice.php"]').click(function(e) {
+                // You can add additional handling here if needed
+                M.toast({html: 'Downloading invoice...', classes: 'blue'});
+            });
+            
+            // Handle view details (optional enhancement)
+            $('.tooltipped[href*="view_order.php"]').click(function() {
+                // You can add loading indicator or additional handling here
+                $(this).find('i').text('hourglass_empty'); // Change icon to loading
+                // Icon will return to normal when page loads
+            });
         });
     </script>
     <?php include 'includes/footer.php'; ?>

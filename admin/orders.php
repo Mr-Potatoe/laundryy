@@ -6,6 +6,19 @@ checkAdminAccess();
 
 // Handle status updates via AJAX
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['order_id'], $_POST['status'])) {
+    // First check if order is already cancelled
+    $checkStmt = $pdo->prepare("SELECT status FROM orders WHERE order_id = ?");
+    $checkStmt->execute([$_POST['order_id']]);
+    $currentStatus = $checkStmt->fetchColumn();
+
+    if ($currentStatus === 'cancelled') {
+        http_response_code(400);
+        exit(json_encode([
+            'success' => false,
+            'message' => 'Cannot update cancelled orders'
+        ]));
+    }
+
     $stmt = $pdo->prepare("UPDATE orders SET status = ? WHERE order_id = ?");
     $stmt->execute([$_POST['status'], $_POST['order_id']]);
     exit(json_encode(['success' => true]));
@@ -170,13 +183,16 @@ $orders = $pdo->query("SELECT o.*, u.username, u.phone
                                 <td>#<?php echo str_pad($order['order_id'], 5, '0', STR_PAD_LEFT); ?></td>
                                 <td><i class="material-icons tiny">person</i> <?php echo $order['username']; ?></td>
                                 <td><i class="material-icons tiny">phone</i> <?php echo $order['phone']; ?></td>
-                                <td><strong>$<?php echo number_format($order['total_price'], 2); ?></strong></td>
+                                <td><strong><?php echo number_format($order['total_price'], 2); ?></strong></td>
                                 <td><?php echo $order['total_weight']; ?> kg</td>
-                                <td><i class="material-icons tiny">event</i> <?php echo date('M d, Y', strtotime($order['pickup_date'])); ?></td>
-                                <td><i class="material-icons tiny">event</i> <?php echo date('M d, Y', strtotime($order['delivery_date'])); ?></td>
+                                <td><i class="material-icons tiny">event</i> <?php echo date('M d, Y', strtotime($order['pickup_datetime'])); ?></td>
+                                <td><i class="material-icons tiny">event</i> <?php echo date('M d, Y', strtotime($order['delivery_datetime'])); ?></td>
                                 <td>
                                     <div class="input-field" style="margin: 0;">
-                                        <select class="status-select status-<?php echo $order['status']; ?>" data-order-id="<?php echo $order['order_id']; ?>">
+                                        <select class="status-select status-<?php echo $order['status']; ?>" 
+                                                data-order-id="<?php echo $order['order_id']; ?>"
+                                                data-original-status="<?php echo $order['status']; ?>"
+                                                <?php echo $order['status'] === 'cancelled' ? 'disabled' : ''; ?>>
                                             <?php
                                             $statuses = ['pending', 'processing', 'ready', 'delivered', 'cancelled'];
                                             foreach($statuses as $status) {
@@ -201,55 +217,117 @@ $orders = $pdo->query("SELECT o.*, u.username, u.phone
         </div>
     </div>
 
-    <!-- Update modal code to match new styling -->
-    <div id="orderDetailsModal" class="modal modal-lg">
+    <!-- Order Details Modal -->
+    <div id="orderDetailsModal" class="modal modal-fixed-footer">
         <div class="modal-content">
-            <h4><i class="material-icons left">receipt</i> Order Details</h4>
-            <div class="row">
-                <div class="col s12 m6">
-                    <h5>Order Information</h5>
-                    <p><strong>Order ID:</strong> <span id="modal-order-id"></span></p>
-                    <p><strong>Status:</strong> <span id="modal-status"></span></p>
-                    <p><strong>Pickup Date:</strong> <span id="modal-pickup-date"></span></p>
-                    <p><strong>Delivery Date:</strong> <span id="modal-delivery-date"></span></p>
-                    <p><strong>Total Weight:</strong> <span id="modal-total-weight"></span> kg</p>
-                    <p><strong>Total Price:</strong> $<span id="modal-total-price"></span></p>
-                </div>
-                <div class="col s12 m6">
-                    <h5>Customer Information</h5>
-                    <p><strong>Name:</strong> <span id="modal-customer-name"></span></p>
-                    <p><strong>Phone:</strong> <span id="modal-customer-phone"></span></p>
-                    <p><strong>Email:</strong> <span id="modal-customer-email"></span></p>
-                    <p><strong>Address:</strong> <span id="modal-customer-address"></span></p>
-                </div>
-            </div>
             <div class="row">
                 <div class="col s12">
-                    <h5>Special Instructions</h5>
-                    <p id="modal-instructions"></p>
+                    <h4 class="teal-text"><i class="material-icons left">receipt</i>Order Details</h4>
+                    <div class="divider"></div>
                 </div>
             </div>
+
+            <div class="row">
+                <div class="col s12 m6">
+                    <div class="card">
+                        <div class="card-content">
+                            <span class="card-title"><i class="material-icons left">info</i>Order Information</span>
+                            <div class="collection">
+                                <div class="collection-item">
+                                    <span class="title">Order ID</span>
+                                    <p id="modal-order-id" class="secondary-content"></p>
+                                </div>
+                                <div class="collection-item">
+                                    <span class="title">Status</span>
+                                    <p id="modal-status" class="secondary-content"></p>
+                                </div>
+                                <div class="collection-item">
+                                    <span class="title">Pickup Date</span>
+                                    <p id="modal-pickup-date" class="secondary-content"></p>
+                                </div>
+                                <div class="collection-item">
+                                    <span class="title">Delivery Date</span>
+                                    <p id="modal-delivery-date" class="secondary-content"></p>
+                                </div>
+                                <div class="collection-item">
+                                    <span class="title">Total Weight</span>
+                                    <p id="modal-total-weight" class="secondary-content"></p>
+                                </div>
+                                <div class="collection-item">
+                                    <span class="title">Total Price</span>
+                                    <p id="modal-total-price" class="secondary-content"></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col s12 m6">
+                    <div class="card">
+                        <div class="card-content">
+                            <span class="card-title"><i class="material-icons left">person</i>Customer Information</span>
+                            <div class="collection">
+                                <div class="collection-item">
+                                    <span class="title">Name</span>
+                                    <p id="modal-customer-name" class="secondary-content"></p>
+                                </div>
+                                <div class="collection-item">
+                                    <span class="title">Phone</span>
+                                    <p id="modal-customer-phone" class="secondary-content"></p>
+                                </div>
+                                <div class="collection-item">
+                                    <span class="title">Email</span>
+                                    <p id="modal-customer-email" class="secondary-content"></p>
+                                </div>
+                                <div class="collection-item">
+                                    <span class="title">Address</span>
+                                    <p id="modal-customer-address" class="secondary-content"></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="row">
                 <div class="col s12">
-                    <h5>Order Items</h5>
-                    <table class="striped">
-                        <thead>
-                            <tr>
-                                <th>Service</th>
-                                <th>Weight (kg)</th>
-                                <th>Price per kg</th>
-                                <th>Total</th>
-                            </tr>
-                        </thead>
-                        <tbody id="modal-items">
-                        </tbody>
-                    </table>
+                    <div class="card">
+                        <div class="card-content">
+                            <span class="card-title"><i class="material-icons left">note</i>Special Instructions</span>
+                            <blockquote id="modal-instructions" class="grey-text"></blockquote>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col s12">
+                    <div class="card">
+                        <div class="card-content">
+                            <span class="card-title"><i class="material-icons left">list</i>Order Items</span>
+                            <table class="highlight responsive-table">
+                                <thead>
+                                    <tr>
+                                        <th>Service</th>
+                                        <th>Weight (kg)</th>
+                                        <th>Price per kg</th>
+                                        <th>Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="modal-items">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
+
         <div class="modal-footer">
-            <a href="#!" class="modal-close waves-effect waves-green btn-flat">Close</a>
-            <a href="#" id="print-invoice" class="waves-effect waves-green btn blue-text">Print Invoice</a>
+            <a href="#!" class="modal-close waves-effect waves-light btn-flat grey-text">Close</a>
+            <a href="#" id="print-invoice" class="waves-effect waves-light btn teal">
+                <i class="material-icons left">print</i>Print Invoice
+            </a>
         </div>
     </div>
 
@@ -262,8 +340,18 @@ $orders = $pdo->query("SELECT o.*, u.username, u.phone
             
             // Add preloader for status updates
             $('.status-select').change(function() {
-                const orderId = $(this).data('order-id');
-                const newStatus = $(this).val();
+                const select = $(this);
+                const orderId = select.data('order-id');
+                const newStatus = select.val();
+                const originalStatus = select.attr('data-original-status');
+                
+                // Check if order was cancelled
+                if (originalStatus === 'cancelled') {
+                    M.toast({html: '<i class="material-icons left">error</i> Cannot update cancelled orders!', classes: 'rounded red'});
+                    select.val(originalStatus); // Reset to original value
+                    select.formSelect(); // Refresh Materialize select
+                    return;
+                }
                 
                 M.toast({html: '<i class="material-icons left">refresh</i> Updating status...', classes: 'rounded'});
                 
@@ -274,8 +362,14 @@ $orders = $pdo->query("SELECT o.*, u.username, u.phone
                 .done(function(response) {
                     M.toast({html: '<i class="material-icons left">check</i> Order status updated!', classes: 'rounded green'});
                 })
-                .fail(function() {
-                    M.toast({html: '<i class="material-icons left">error</i> Error updating status!', classes: 'rounded red'});
+                .fail(function(xhr) {
+                    let errorMessage = 'Error updating status!';
+                    if (xhr.responseJSON && xhr.responseJSON.message) {
+                        errorMessage = xhr.responseJSON.message;
+                    }
+                    M.toast({html: `<i class="material-icons left">error</i> ${errorMessage}`, classes: 'rounded red'});
+                    select.val(originalStatus); // Reset to original value
+                    select.formSelect(); // Refresh Materialize select
                 });
             });
             
@@ -316,8 +410,8 @@ $orders = $pdo->query("SELECT o.*, u.username, u.phone
                             <tr>
                                 <td>${item.service_name}</td>
                                 <td>${item.quantity}</td>
-                                <td>$${parseFloat(item.price_per_kg).toFixed(2)}</td>
-                                <td>$${parseFloat(item.item_price).toFixed(2)}</td>
+                                <td>${parseFloat(item.price_per_kg).toFixed(2)}</td>
+                                <td>${parseFloat(item.item_price).toFixed(2)}</td>
                             </tr>
                         `;
                     });

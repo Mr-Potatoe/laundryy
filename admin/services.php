@@ -176,7 +176,7 @@ $services = $pdo->query("SELECT * FROM services ORDER BY service_name")->fetchAl
                             <tr>
                                 <td><strong><?php echo $service['service_name']; ?></strong></td>
                                 <td><?php echo $service['description']; ?></td>
-                                <td class="price-tag">$<?php echo number_format($service['price_per_kg'], 2); ?></td>
+                                <td class="price-tag"><?php echo number_format($service['price_per_kg'], 2); ?></td>
                                 <td>
                                     <span class="service-type type-<?php echo $service['service_type']; ?>">
                                         <?php echo ucfirst(str_replace('_', ' ', $service['service_type'])); ?>
